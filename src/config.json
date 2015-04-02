@@ -1,0 +1,24 @@
+{
+  "google_api_key": null,
+  "audiotest": {
+    "filename": "audio/default.wav",
+    "value": "Hello recorder, how are you?"
+  },
+  "sip": {
+    "dial_ddi": null,
+    "uri": null,
+    "domain": null,
+    "username": null,
+    "password": null,
+    "proxy": null
+  },
+  "ua_cfg": {
+    "max_calls": 1,
+    "nameserver": "8.8.8.8",
+    "user_agent": "SIPCallRecordVerify"
+  },
+  "media_cfg": {
+    "channel_count": 8,
+    "max_media_ports": 8
+  }
+}
