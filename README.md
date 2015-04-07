@@ -1,7 +1,7 @@
 # SIPCallRecordVerify
 Automated SIP call generator for verifying recording platforms
 
-
+-------
 In a nutshell, this will register as a user that should have Call Recording enabled. Every N seconds it will place a call and playback a pre-defined annoucment. 
 
 Once the call has been recorded, the recording is fetched then the speech is converted to text using Google Speech APIs.
