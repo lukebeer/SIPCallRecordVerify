@@ -32,11 +32,11 @@ class SIPCallRecordVerify:
         if not self.verify.setup():
             sys.exit(1)
         self.uri = uri
+        self.username = username
+        self.password = password
         self.domain = domain
         self.proxy = proxy
         global lib
-        acc_cfg = pj.AccountConfig(domain=domain, username=username, password=password, proxy=proxy)
-        acc_cfg.id = uri
         lib.init(ua_cfg=self.ua_cfg,
                      log_cfg=pj.LogConfig(level=log_level, callback=lambda level, str, len: logging.debug(str.strip())),
                      media_cfg=self.media_cfg)
@@ -44,6 +44,8 @@ class SIPCallRecordVerify:
         logging.info("Listening on %s:%d" % (transport.info().host, transport.info().port))
         lib.start(with_thread=True)
         logging.info("Attempting registration...")
+        acc_cfg = pj.AccountConfig(domain=self.domain, username=self.username, password=self.password, proxy=self.proxy)
+        acc_cfg.id = self.uri
         self.acc = lib.create_account(acc_config=acc_cfg)
         self.acc_cb = AccountHandler(self.acc)
         self.acc.set_callback(self.acc_cb)
@@ -57,8 +59,8 @@ class SIPCallRecordVerify:
             call = None
             end = time.time() + interval
             while True:
-                logging.info("Now %d" % time.time())
-                logging.info("End %d" % end)
+                remaining = end - time.time()
+                logging.info("Seconds until next call: %d" % remaining)
                 if time.time() >= end:
                     end = time.time() + interval
                     if call:
@@ -92,5 +94,6 @@ if __name__ == '__main__':
     (opts, args) = op.parse_args()
     config = json.load(file(opts.config))
     sip = config['sip']
-    app = SIPCallRecordVerify(uri=sip['uri'], domain=sip['domain'], username=sip['username'], password=sip['password'], proxy=sip['proxy'])
-    app.run(sip['dial_ddi'], config['audiotest'], opts.interval)
+    app = SIPCallRecordVerify(uri=str(sip['uri']), domain=str(sip['domain']), username=str(sip['username']),
+                              password=str(sip['password']), proxy=str(sip['proxy']))
+    app.run(str(sip['dial_ddi']), str(config['audiotest']), opts.interval)
