@@ -1,19 +1,29 @@
 {
-  "google_api_key": null,
+  "google_api_key": "",
   "audiotest": {
-    "filename": "audio/default.wav",
-    "value": "Hello recorder, how are you?"
+    "filename": "../audio/default.wav",
+    "value": ""
   },
   "sip": {
-    "dial_ddi": null,
-    "uri": null,
-    "domain": null,
-    "username": null,
-    "password": null,
-    "proxy": null
+    "caller": {
+      "ddi": "",
+      "uri": "",
+      "domain": "",
+      "username": "",
+      "password": "",
+      "proxy": ""
+    },
+    "calling": {
+      "ddi": "",
+      "uri": "",
+      "domain": "",
+      "username": "",
+      "password": "",
+      "proxy": ""
+    }
   },
   "ua_cfg": {
-    "max_calls": 1,
+    "max_calls": 8,
     "nameserver": "8.8.8.8",
     "user_agent": "SIPCallRecordVerify"
   },

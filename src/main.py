@@ -4,17 +4,17 @@ __author__ = 'luke Berezynskyj <eat.lemons@gmail.com>'
 import sys
 import time
 import json
+import socket
 import logging
 import pjsua as pj
+import multiprocessing
 from time import sleep
 from verify import Verify
 from optparse import OptionParser
 from accounthandler import AccountHandler
 
 
-lib = pj.Lib()
-log_level = logging.INFO
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(message)s")
 
 
 class SIPCallRecordVerify:
@@ -27,73 +27,88 @@ class SIPCallRecordVerify:
     media_cfg.channel_count = 8
     media_cfg.max_media_ports = 8
 
-    def __init__(self, uri, domain=None, username=None, password=None, proxy=None):
+    def __init__(self, caller, calling, log_level=3):
         self.verify = Verify()
         if not self.verify.setup():
             sys.exit(1)
-        self.uri = uri
-        self.username = username
-        self.password = password
-        self.domain = domain
-        self.proxy = proxy
-        global lib
-        lib.init(ua_cfg=self.ua_cfg,
-                     log_cfg=pj.LogConfig(level=log_level, callback=lambda level, str, len: logging.debug(str.strip())),
+        self.lib = pj.Lib()
+        self.lib.init(ua_cfg=self.ua_cfg,
+                     log_cfg=pj.LogConfig(level=7, callback=lambda level, str, len: logging.debug(str.strip())),
                      media_cfg=self.media_cfg)
-        transport = lib.create_transport(pj.TransportType.UDP)
-        logging.info("Listening on %s:%d" % (transport.info().host, transport.info().port))
-        lib.start(with_thread=True)
-        logging.info("Attempting registration...")
-        acc_cfg = pj.AccountConfig(domain=self.domain, username=self.username, password=self.password, proxy=self.proxy)
-        acc_cfg.id = self.uri
-        self.acc = lib.create_account(acc_config=acc_cfg)
-        self.acc_cb = AccountHandler(self.acc)
-        self.acc.set_callback(self.acc_cb)
-        self.acc_cb.wait()
-        logging.info("Registration complete, status: %s (%s)" % (self.acc.info().reg_status, self.acc.info().reg_reason))
-        logging.info("Max conf ports: %s" % lib.conf_get_max_ports())
+        self.lib.start(with_thread=True)
+        self.caller_ddi, self.caller_account, self.caller_cb, self.caller_cfg = self.register(caller, default=True)
+        self.calling_ddi, self.calling_account, self.calling_cb, self.calling_cfg = self.register(calling)
 
-    def run(self, dial_ddi, audiotest, interval=300):
-        global lib
+    def register(self, config, default=False):
+        for k, v in config.iteritems():
+            config[k] = str(v)
+        ddi = config['ddi']
+        logging.info("Creating transport for %s" % (config['uri']))
+        transport = self.lib.create_transport(pj.TransportType.UDP)
+        logging.info("Listening on %s:%d for %s" % (transport.info().host, transport.info().port, config['uri']))
+        logging.info("Attempting registration for %s" % config['uri'])
+        account_cfg = pj.AccountConfig(domain=config['domain'], username=config['username'],
+                                   password=config['password'], proxy=config['proxy'])
+        account_cfg.id = config['uri']
+        account = self.lib.create_account(acc_config=account_cfg, set_default=default)
+        account.set_transport(transport)
+        account_cb = AccountHandler(account)
+        account.set_callback(account_cb)
+        account_cb.wait()
+        logging.info("%s registered, status: %s (%s)" % (config['uri'], account.info().reg_status, account.info().reg_reason))
+        return (ddi, account, account_cb, account_cfg)
+
+    def start_caller(self, audiotest, interval=300):
         try:
             call = None
             end = time.time() + interval
             while True:
+                if call:
+                    while call.is_valid():
+                        logging.info("Call in progress")
+                        sleep(1)
+                        continue
                 remaining = end - time.time()
                 logging.info("Seconds until next call: %d" % remaining)
-                if time.time() >= end:
-                    end = time.time() + interval
-                    if call:
-                        if call.is_valid():
-                            continue
-                    logging.info("Making call")
-                    call, callhandler = self.acc_cb.new_call("%s@%s" % (dial_ddi, self.proxy[4:]))
-                    if call:
-                        while call.info().state != pj.CallState.CONFIRMED:
-                            continue
-                        sleep(1) #  Be gentle, we could be dealing with Windows.
-                        callhandler.play_file(audiotest['filename'], True)
-                        # TODO: Fetch recording, convert to text, validate.
+                if time.time() <= end:
+                    sleep(1)
+                    continue
+                end = time.time() + interval
+                logging.info("Making call")
+                call, callhandler = self.caller_cb.new_call("%s@%s" % (self.calling_ddi, self.caller_cfg.proxy[0][4:-3]))
+                if call:
+                    while call.info().state != pj.CallState.CONFIRMED:
+                        logging.info("Looping call state check with %s" % call.info().state)
                         sleep(1)
-                        call.hangup()
+                        continue
+                    sleep(1)
+                    callhandler.play_file(audiotest['filename'], True)
+                    # TODO: Fetch recording, convert to text, validate.
+                    sleep(1)
+                    call.hangup()
                 sleep(1)
-                sys.stdout.flush()
-                lib.handle_events()
+        except pj.Error, e:
+            logging.error("Exception: " + str(e))
+
+
+    def run(self, audiotest, interval=300):
+        try:
+            caller = multiprocessing.Process(target=self.start_caller, args=(audiotest, interval))
+            caller.start()
+            caller.join()
         except pj.Error, e:
             logging.error("Exception: " + str(e))
         finally:
-            lib.destroy()
+            self.lib.destroy()
 
 
 if __name__ == '__main__':
     op = OptionParser()
-    op.add_option('-c', dest='config', help="eg: server_one.json", default="config.json")
-    op.add_option('-i', dest='interval', help="Test interval in seconds (default: 5min)", default=300)
-    op.add_option('-t', dest='threshold', help="Minimum threshold percent that recording is valid (default: 80)", default=80)
-    op.add_option('-v', dest='verbose', help="Be verbose with logging", default=False)
+    op.add_option('-c', dest='config',    help="eg: server_one.json", default="config.json")
+    op.add_option('-i', dest='interval',  help="Test interval in seconds (default: 5min)", default=5, type="int")
+    op.add_option('-t', dest='threshold', help="Minimum threshold percent that recording is valid (default: 80)", default=80, type="int")
+    op.add_option('-v', dest='log_level', help="Be verbose with logging", default=3, type="int")
     (opts, args) = op.parse_args()
     config = json.load(file(opts.config))
-    sip = config['sip']
-    app = SIPCallRecordVerify(uri=str(sip['uri']), domain=str(sip['domain']), username=str(sip['username']),
-                              password=str(sip['password']), proxy=str(sip['proxy']))
-    app.run(str(sip['dial_ddi']), str(config['audiotest']), opts.interval)
+    app = SIPCallRecordVerify(config['sip']['caller'], config['sip']['calling'], opts.log_level)
+    app.run(config['audiotest'], opts.interval)

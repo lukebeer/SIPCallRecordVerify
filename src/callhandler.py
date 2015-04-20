@@ -10,8 +10,7 @@ from time import sleep
 
 class CallHandler(pj.CallCallback):
     def __init__(self, call=None):
-        global lib
-        lib = pj.Lib.instance()
+        self.lib = pj.Lib.instance()
         pj.CallCallback.__init__(self, call)
         self.wait_for_hash = False
         self.collection = ''
@@ -22,17 +21,16 @@ class CallHandler(pj.CallCallback):
         self.account = account
 
     def play_file(self, file="default.wav", enforce_playback=False):
-        global lib
         logging.info("Playing file %s" % file)
-        player = lib.create_player(file)
-        player_slot = lib.player_get_slot(player)
-        lib.conf_connect(player_slot, self.call.info().conf_slot)
+        player = self.lib.create_player(file)
+        player_slot = self.lib.player_get_slot(player)
+        self.lib.conf_connect(player_slot, self.call.info().conf_slot)
         if enforce_playback:
             meta = subprocess.check_output(["sox", file, "-n", "stat"], stderr=subprocess.STDOUT)
             duration = re.search("Length[^\d]+((?:\d|\.)+)", meta).group(1)
             logging.info("Enforcing media playback with duration: %s" % duration)
             sleep(float(duration)+0.6)
-            lib.player_destroy(player)
+            self.lib.player_destroy(player)
         return player
 
     def on_state(self):
@@ -63,6 +61,6 @@ class CallHandler(pj.CallCallback):
             self.collection += digits
             return
         if digits == '7':
-            self.play_file("default.wav", enforce_playback=True)
+            self.play_file("../audio/default.wav", enforce_playback=True)
             self.wait_for_hash = True
             self.action = "newcall"
